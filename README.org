@@ -1,0 +1,137 @@
+* ADELLE
+  ADELLE is a method for doing a global test given the p-values of a
+  collection of correlated individual tests. That is, the individual tests
+  each test a "local" null hypothesis and ADELLE testing the global null
+  hypothesis that every local test is under the null, against the global
+  alternative hypothesis that at least one local test is under the
+  (local) alternative. ADELLE is intended to have relative good power under
+  the so called "rare and weak" scenario where true alternative are rare in
+  the collection of tests with relatively weak effect sizes. For instance,
+  procedures like FDR can construct a non-empty discovery set even when
+  a method like the Bonferroni corrected minimum p-value fail to reject the
+  global null hypothesis. FDR, however, still requires there be enough
+  "small" p-values to result in a non-empty discovery set. In the rare and
+  weak scenario, ADELLE will often reject the global null hypothesis even
+  when FDR fails to give any discoveries.
+
+** Requirements
+   - =mpoly= :: ADELLE requires this R package
+
+   In some parts, ADELLE uses the =parallel= package, which requires a linux
+   or mac environment to run in parallel. Windows machines should still work,
+   though these parts will run single-threaded. Although slower, it is not a
+   very significant slowdown.
+
+   When using ADELLE's correlation matrix shrinkage function and when doing
+   the Monte Carlo replicates to determine the null distribution, ADELLE can
+   make significant use of the machine's numerical linear algebra library.
+   Using a multi-threaded library can significantly increase performance,
+   though it is not a requirement to run.
+
+** Install
+   Source the accompanying R file in an R environment. All R functions are
+   contained within this file.
+   : source(adelle-v0.R)
+
+** Usage
+
+*** Apply shrinkage to the sample correlation matrix
+    ADELLE needs the correlation between the tests to do its global test. We
+    model the correlation on the Z score scale and, for trans eQTL analysis,
+    approximate the correlation with the gene expression level correlations.
+    However, because the number of samples is typically small compared to the
+    number of genes, the sample correlation matrix needs to be regularized.
+    We do this by shrinking the sample correlation matrix towards the
+    identity, \Omega = wC + (1 - w)I, where C is the sample correlation
+    matrix.
+    1. Get the sample correlation matrix and its eigenvalue decomposition
+       from the N \times D expression matrix Y:
+       : Y.cor <- crossprod(scale(Y)) / (N - 1)
+       : Y.eig <- eigen(Y.cor, symmetric = TRUE)
+    2. Apply the shrinkage routine in =shrink.C= with the default shrinkage
+       amount:
+       : shrink.out <- shrink.C(Y.cor, N, Y.eig)
+    3. =shrink.C= shrinks the correlation matrix and creates four sample
+       correlation matrix replicates by taking N multivariate normal sample
+       from the shrunken correlation matrix. If the amount of shrinkage is
+       correct, the mean r^2 of the sampled correlation matrices will be
+       equal to the mean r^2 of the original sample correlation matrix. Check
+       this:
+       : shrink.out$y.mean.r2 # Original sample correlation: 0.08734761
+       : shrink.out$est.mean.r2 # 0.08826096
+    4. The mean r^2 post default shrinkage (0.08826096) is larger than the
+       mean r^2 pre-shrinkage (0.08734761), so we repeat the shrinkage
+       process with a small negative tuning parameter:
+       : shrink.out <- shrink.C(Y.cor, N, Y.eig, tune = -0.011)
+    5. Check the mean r^2 again:
+       : shrink.out$y.mean.r2 # 0.08734761
+       : shrink.out$est.mean.r2 # 0.08731608
+    6. We have found that the mean r^2 values should be equal to at least
+       three significant digits. Here, that is true so we are done, but if
+       not, we repeat steps 2 and 3 with a new tuning parameter until they
+       are.
+    7. Extract the final, shrunken estimate of the correlation matrix and
+       get its eigen decomposition:
+       : shrunken.cor <- shrink.out$est.cor
+       : shrunken.eig <- eigen(shrunken.cor, symmetric = TRUE)
+
+*** Compute an empirical null distribution and rejection region
+    To determine the significance level of any single global test we need the
+    distribution of the ADELLE statistic under the global null hypothesis. We
+    estimate the global null hypothesis by Monte Carlo. Given the null
+    distribution, we compute the rejection region for the ADELLE statistic
+    for some significance level \alpha.
+    1. First decide on the number of small p-values over which we will look
+       for an enrichment. If our global test includes 20,000 genes, for
+       instance, we may decide that an enrichment of small p-values over the
+       smallest 1000 p-values is meaningful.
+       : ord.level <- 1000
+    2. Create a grid of precomputed l-values. To do this we decide on the
+       smallest p-value in the grid and the number of grid points we want. To
+       decide on the number of grid point, it is helpful to decide on the
+       number of grid points for each order of magnitude of the p-values. For
+       instance, we might choose the smallest p-value in the grid to be 1e-18
+       and use 500 grid points per order of magnitude giving 4000 total grid
+       points. Note that ADELLE will linearly interpolate within the grid or
+       will directly compute the l-value if it encounters a p-value smaller
+       than what is in the grid.
+       : min.p <- 1e-18
+       : n.pts <- 4000
+       : p.grid <- precomp.pgrid(min.p, n.pts)
+       : precomp.out <- precomp.lvalues(p.grid, ord.level, shrunken.cor)
+    3. Perform the Monte Carlo. Decide on the number of replicates. This step
+       can be easily parallelized. Here, we assume that a multi-threaded BLAS
+       is available for matrix computations and parallelization is done when
+       computing the l-values (which does not do any matrix computations):
+       : nrep <- 2e7
+       : ncore <- 12
+       : emp.null.out <- make.emp.null(nrep, shrunken.eig, precomp.out, ord.level, n.cores = ncore)
+    4. Get the ADELLE statistic rejection region. If any l-value is smaller
+       than the threshold, we will reject the global null for that global
+       test.
+       : adelle.thresh <- adelle.lval.thresh(alpha,emp.null.out$adelle.dist)
+
+*** Perform a scan on your data
+    We assume a matrix of p-values with M SNPs (here as rows) and D genes
+    (here as columns).
+    1. We compute a new precompute grid because we expect some tests to be
+       under the alternative resulting in smaller p-values than in our null
+       Monte Carlos. Here we know that we know that some p-value are as small
+       as 1e-30 and maybe a small number are even smaller.
+       : min.p < 1e-30
+       : n.pts <- 15000
+       : p.grid <- precomp.pgrid(min.p, n.pts)
+       : precomp.out <- precomp.lvalues(p.grid, ord.level, shrunken.cor)
+    2. Loop over the rows of our p-value matrix computing l-values for each
+       one with the ADELLE statistic the minimum l-value of each row. Note
+       that for each row we first extract out the =ord.level= smallest
+       p-values.
+       : adelle.stats <- sapply(1:nrow(p.mat), function(x){
+       :     p.sort <- sort(p.mat[x,])[1:ord.level]
+       :     l.vals <- get.lvalue(p.sort, 1:ord.level, precomp.out)
+       :     return(min(l.vals))
+       :     })
+    3. Determine for which SNPs you reject the global null,
+       : adelle.reject <- which(adelle.stats < adelle.thresh)
+       and/or get the p-value for each SNP,
+       : adelle.pvals <- adelle.emp.pval(adelle.stats, emp.null.out$adelle.dist)
