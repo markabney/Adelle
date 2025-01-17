@@ -54,7 +54,7 @@
     3. =shrink.C= shrinks the correlation matrix and creates four sample
        correlation matrix replicates by taking N multivariate normal sample
        from the shrunken correlation matrix. If the amount of shrinkage is
-       correct, the mean r^2 of the sampled correlation matrices will be
+       correct, the mean $r^2$ of the sampled correlation matrices will be
        equal to the mean r^2 of the original sample correlation matrix. Check
        this:
        : shrink.out$y.mean.r2 # Original sample correlation: 0.08734761
@@ -68,7 +68,7 @@
        : shrink.out$est.mean.r2 # 0.08731608
     6. We have found that the mean r^2 values should be equal to at least
        three significant digits. Here, that is true so we are done, but if
-       not, we repeat steps 2 and 3 with a new tuning parameter until they
+       not, we repeat steps 4 and 5 with a new tuning parameter until they
        are.
     7. Extract the final, shrunken estimate of the correlation matrix and
        get its eigen decomposition:
