@@ -91,13 +91,13 @@
        decide on the number of grid point, it is helpful to decide on the
        number of grid points for each order of magnitude of the p-values. For
        instance, we might choose the smallest p-value in the grid to be 1e-18
-       and use 500 grid points per order of magnitude giving 4000 total grid
+       and use 500 grid points per order of magnitude giving 9000 total grid
        points. Note that ADELLE will linearly interpolate within the grid or
        will directly compute the l-value if it encounters a p-value smaller
        than what is in the grid.
        : min.p <- 1e-18
-       : n.pts <- 4000
-       : p.grid <- precomp.pgrid(min.p, n.pts)
+       : n.pts <- 9000
+       : p.grid <- pregrid.points(min.p, n.pts)
        : precomp.out <- precomp.lvalues(p.grid, ord.level, shrunken.cor)
     3. Perform the Monte Carlo. Decide on the number of replicates. This step
        can be easily parallelized. Here, we assume that a multi-threaded BLAS
@@ -116,11 +116,11 @@
     (here as columns).
     1. We compute a new precompute grid because we expect some tests to be
        under the alternative resulting in smaller p-values than in our null
-       Monte Carlos. Here we know that we know that some p-value are as small
+       Monte Carlos. Here we know that some p-value are as small
        as 1e-30 and maybe a small number are even smaller.
-       : min.p < 1e-30
+       : min.p <- 1e-30
        : n.pts <- 15000
-       : p.grid <- precomp.pgrid(min.p, n.pts)
+       : p.grid <- pregrid.points(min.p, n.pts)
        : precomp.out <- precomp.lvalues(p.grid, ord.level, shrunken.cor)
     2. Loop over the rows of our p-value matrix computing l-values for each
        one with the ADELLE statistic the minimum l-value of each row. Note

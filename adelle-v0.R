@@ -160,7 +160,7 @@ get.lvalue <- function(pval, ord.idx, precomp) {
     lval
 }
 
-shrink.C <- function(ycor, ny, tune = 0, cor.eig = NULL, ntest = 4) {
+shrink.C <- function(ycor, ny, cor.eig = NULL, tune = 0, ntest = 4) {
 	  ## Given a correlation matrix made from a sample of Y's, apply shrinkage
     ## to get an estimate of the (true) population correlation matrix. The
     ## measure for accuracy is how closely the estimated population correlation
@@ -332,7 +332,7 @@ adelle.emp.pval <- function(lval, l.dist) {
     r <- which(order(c(l.sort, l.dist)) <= M) - 1:M
     pv.sort <- (r + 1) / (L + 1)
     pv.unsort <- pv.sort[order(l.order)]
-    return(pv.usort)
+    return(pv.unsort)
 }
 
 adelle.lval.thresh <- function(thr, l.dist) {
