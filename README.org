@@ -1,11 +1,11 @@
 * ADELLE
   ADELLE is a method for doing a global test given the p-values of a
   collection of correlated individual tests. That is, the individual tests
-  each test a "local" null hypothesis and ADELLE testing the global null
-  hypothesis that every local test is under the null, against the global
+  each test a "local" null hypothesis with ADELLE testing the global null
+  hypothesis that every local test is under the null against the global
   alternative hypothesis that at least one local test is under the
-  (local) alternative. ADELLE is intended to have relative good power under
-  the so called "rare and weak" scenario where true alternative are rare in
+  (local) alternative. ADELLE is intended to have relatively good power under
+  the so called "rare and weak" scenario where true alternatives are rare in
   the collection of tests with relatively weak effect sizes. For instance,
   procedures like FDR can construct a non-empty discovery set even when
   a method like the Bonferroni corrected minimum p-value fail to reject the
@@ -55,18 +55,18 @@
        correlation matrix replicates by taking N multivariate normal sample
        from the shrunken correlation matrix. If the amount of shrinkage is
        correct, the mean $r^2$ of the sampled correlation matrices will be
-       equal to the mean r^2 of the original sample correlation matrix. Check
+       equal to the mean $r^2$ of the original sample correlation matrix. Check
        this:
        : shrink.out$y.mean.r2 # Original sample correlation: 0.08734761
        : shrink.out$est.mean.r2 # 0.08826096
-    4. The mean r^2 post default shrinkage (0.08826096) is larger than the
-       mean r^2 pre-shrinkage (0.08734761), so we repeat the shrinkage
+    4. The mean $r^2$ post default shrinkage (0.08826096) is larger than the
+       mean $r^2$ pre-shrinkage (0.08734761), so we repeat the shrinkage
        process with a small negative tuning parameter:
        : shrink.out <- shrink.C(Y.cor, N, Y.eig, tune = -0.011)
-    5. Check the mean r^2 again:
+    5. Check the mean $r^2$ again:
        : shrink.out$y.mean.r2 # 0.08734761
        : shrink.out$est.mean.r2 # 0.08731608
-    6. We have found that the mean r^2 values should be equal to at least
+    6. We have found that the mean $r^2$ values should be equal to at least
        three significant digits. Here, that is true so we are done, but if
        not, we repeat steps 4 and 5 with a new tuning parameter until they
        are.
@@ -88,13 +88,13 @@
        : ord.level <- 1000
     2. Create a grid of precomputed l-values. To do this we decide on the
        smallest p-value in the grid and the number of grid points we want. To
-       decide on the number of grid point, it is helpful to decide on the
+       decide on the number of grid points, it is helpful to decide on the
        number of grid points for each order of magnitude of the p-values. For
        instance, we might choose the smallest p-value in the grid to be 1e-18
        and use 500 grid points per order of magnitude giving 9000 total grid
-       points. Note that ADELLE will linearly interpolate within the grid or
-       will directly compute the l-value if it encounters a p-value smaller
-       than what is in the grid.
+       points. Note that ADELLE will linearly interpolate l-values within the
+       grid or will directly compute the l-value if it encounters a p-value
+       smaller than what is in the grid.
        : min.p <- 1e-18
        : n.pts <- 9000
        : p.grid <- pregrid.points(min.p, n.pts)
@@ -102,9 +102,15 @@
     3. Perform the Monte Carlo. Decide on the number of replicates. This step
        can be easily parallelized. Here, we assume that a multi-threaded BLAS
        is available for matrix computations and parallelization is done when
-       computing the l-values (which does not do any matrix computations):
+       computing the l-values (which does not do any matrix computations).
+       Note that if =R= is using a single threaded BLAS, parallelization can
+       be easily done by launching multiple =R= sessions each of which runs a
+       subset of the total number of replicates, and each with a different
+       random number seed. The final distribution is then formed by
+       concatenating and sorting the distributions from the different sessions.
        : nrep <- 2e7
        : ncore <- 12
+       : set.seed(384762887)
        : emp.null.out <- make.emp.null(nrep, shrunken.eig, precomp.out, ord.level, n.cores = ncore)
     4. Get the ADELLE statistic rejection region. If any l-value is smaller
        than the threshold, we will reject the global null for that global
@@ -112,7 +118,7 @@
        : adelle.thresh <- adelle.lval.thresh(alpha,emp.null.out$adelle.dist)
 
 *** Perform a scan on your data
-    We assume a matrix of p-values with M SNPs (here as rows) and D genes
+    We assume a matrix of p-values =p.mat= with M SNPs (here as rows) and D genes
     (here as columns).
     1. We compute a new precompute grid because we expect some tests to be
        under the alternative resulting in smaller p-values than in our null
@@ -123,7 +129,7 @@
        : p.grid <- pregrid.points(min.p, n.pts)
        : precomp.out <- precomp.lvalues(p.grid, ord.level, shrunken.cor)
     2. Loop over the rows of our p-value matrix computing l-values for each
-       one with the ADELLE statistic the minimum l-value of each row. Note
+       one, with the ADELLE statistic the minimum l-value of each row. Note
        that for each row we first extract out the =ord.level= smallest
        p-values.
        : adelle.stats <- sapply(1:nrow(p.mat), function(x){
@@ -135,3 +141,39 @@
        : adelle.reject <- which(adelle.stats < adelle.thresh)
        and/or get the p-value for each SNP,
        : adelle.pvals <- adelle.emp.pval(adelle.stats, emp.null.out$adelle.dist)
+
+** Important points
+   - The ADELLE statistic, and its null distribution, are conditional on a
+     given set of correlations between the local tests. That is, when doing
+     multiple global tests, if the correlation structure changes you would
+     have to compute a new null distribution each time the correlations
+     changed. However, we have found that, in practice, there is some
+     robustness when the correlation structure does not change "very much."
+     For a trans eQTL study, for instance, if you test SNPs on chromosome 1
+     against all genes on chromosomes 2-X, the set of genes in your global
+     test stays constant and you only need a single empiric null distribution
+     and precompute grid. When testing SNPs on chromosome 2, the set of genes
+     is now from chromosomes 1, 3-X, so the correlation structure between
+     genes has changed. Technically, this would require a new empiric null
+     distribution, but, in practice, we find that the distribution changes
+     tend to be relatively minor and the same empiric distribution as used
+     for SNPs on chromosome 1 is a reasonable approximation.
+   - Precomputation is only helpful when many global tests will be done with
+     the same correlation among the local tests. If only a small number of
+     global tests will be done you would first call =prep.lvalue=, to prepare
+     the l-value computation and then =lvalues.single= to get the l-values.
+     So, if in the example above you only had a single vector of p-values,
+     =p.values=, rather than a matrix (where you wish to do a global test on
+     each row) you could do the following,
+     : prep.info <- prep.lvalue(shrunken.cor)
+     : p.sort <- sort(p.values)[1:ord.level]
+     : l.vals <- lvalues.single(p.sort, 1:ord.level, prep.info)$l.values
+     : adelle.stat <- min(l.vals)
+     Additional p-value vectors that have the same correlation matrix would
+     not need =prep.lvalue= to be run again.
+
+** Citation
+   If you use this software, please cite
+   - Akinbiyi T, McPeek MS, Abney M (2025) ADELLE: A global testing method for
+     trans-eQTL mapping. PLOS Genetics 21(1): e1011563.
+     https://doi.org/10.1371/journal.pgen.1011563
